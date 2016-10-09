@@ -35,18 +35,18 @@ public class Robot extends IterativeRobot {
     private CameraServer server;
     private Debug debug;
     
-    //Autonomous States
-    enum State {APPROACH_LOW_AQUIRE, CROSSING_LOW_AQUIRE,APPROACH_CHEVAL,
-    	CROSS_CHEVAL,APPROACH_GENERAL,CROSS_GENERAL, NOTHING}
-    State state;
-
-    //Auto flags
-    private boolean autoInitCheck = false;
-	private boolean done = false;
-	private boolean done2 = false;
-	private boolean done3 = false;
-	private boolean once = false;
+ // Auto Defense choices
+    enum Defense { LOW_BAR, CHEVAL_de_FRISE, GENERAL }
+    Defense defense;
     
+    //Autonomous States
+    enum State { UNKNOWN,
+    	         APPROACH_LOW_AQUIRE, CROSSING_LOW_AQUIRE,
+    	         APPROACH_CHEVAL, CROSS_CHEVAL, CHEVAL_ARMS_READY, CHEVAL_MOVE_FWD,
+    	         APPROACH_GENERAL,CROSS_GENERAL, 
+    	         NOTHING,
+    	         TELEOP }
+    State state;
     
     //Teleop drive variables
     private double rSpeed = 0;
@@ -116,8 +116,8 @@ public class Robot extends IterativeRobot {
           leftMaster.setI(0.0001); 
           leftMaster.setD(0);
          
-
-          state = State.APPROACH_CHEVAL; 
+          defense = Defense.CHEVAL_de_FRISE;
+          state = State.UNKNOWN; 
           SmartDashboard.putNumber("angleS", 397.2);
           SmartDashboard.putNumber("Defense", 1);
          
@@ -160,16 +160,12 @@ public class Robot extends IterativeRobot {
 	    	leftMaster.setPosition(0);
 	    	shooter.setFirst(false);
 	    	aquire.setFirst(false);
-	    	done = false;
-	    	done2 = false;
-	    	done3 = false;
 	    	aquire.setHere(false);
 	    	aquire.setHere4(false);
 
 	    	
 	    	System.out.println("AutoInitRun");
 	    	aquire.setOnce(false);
-	    	once = false;
 
     }
     
@@ -178,68 +174,63 @@ public class Robot extends IterativeRobot {
      */
     public void autonomousPeriodic() {
 
-    	
-    	if(!autoInitCheck){
-    	    rightMaster.setPosition(0);
- 	    	leftMaster.setPosition(0);
- 	    	shooter.setFirst(false);
- 	    	aquire.setFirst(false);
- 	    	if(SmartDashboard.getNumber("Defense") == 1){
- 	    		//for lowbar and portcullis
- 	    		state = State.APPROACH_LOW_AQUIRE;
- 	    	}else if(SmartDashboard.getNumber("Defense") == 2){
- 	    		//for cheval
- 	    		state = State.APPROACH_CHEVAL;
- 	    	}else if(SmartDashboard.getNumber("Defense") == 3){
- 	    		//rock wall, moat, ramparts
- 	    		state = State.APPROACH_GENERAL;
- 	    	}else{
- 	    		//staying still and calibrating
- 	    		state = State.NOTHING;
- 	    	}
- 	    	
-    		leftMaster.changeControlMode(TalonControlMode.Position);
-    		rightMaster.changeControlMode(TalonControlMode.Position);
-    	    rightSlave.changeControlMode(TalonControlMode.Follower);
-    	    rightSlave.set(rightMaster.getDeviceID());
-    	    leftSlave.changeControlMode(TalonControlMode.Follower);
-            leftSlave.set(leftMaster.getDeviceID());
-     		autoInitCheck = true;
-     		
-    	}
-    	
-    	
 
+    	switch (state){
     	
-    	if(state == State.APPROACH_LOW_AQUIRE){
-    		
-        	
+          // make sure auto init was called ?
+    	  case UNKNOWN: {
+    		  autonomousInit();
+    		  break;
+    	  }
 
+    	  
+    	  /************************ low bar *************************/
+    	  case APPROACH_LOW_AQUIRE: {
+    	   		
+  	    	if(!shooter.calibrated()){
+  	    		shooter.calibrate();
+  	    	}
+  	    	
+  	    	if(!aquire.calibrated()){
+  	    		aquire.calibrate();
+  	    	}
+  	    	
+  	    	//2.583 = wheel revs to go 58 inches
+  	    	rightMaster.set(-RobotMap.COUNTS_PER_REV_DRIVE *RobotMap.WHEEL_REVS_TO_DEFENSE);
+      		leftMaster.set(RobotMap.COUNTS_PER_REV_DRIVE *RobotMap.WHEEL_REVS_TO_DEFENSE);   		  
+
+    	    
+	    	if(rightMaster.getPosition() < RobotMap.COUNTS_PER_REV_DRIVE*RobotMap.WHEEL_REVS_TO_DEFENSE+50){
+	    		rightMaster.setPosition(0);
+	    		leftMaster.setPosition(0);
+	    		rightMaster.set(0);
+	    		leftMaster.set(0);
+	    		state = State.CROSSING_LOW_AQUIRE;
+	        }
+    	    if(rightMaster.getOutputCurrent()  > 50){
     		
-	    	if(!shooter.calibrated()){
-	    		shooter.calibrate();
-	    	}
-	    	
-	    	if(!aquire.calibrated()){
-	    		aquire.calibrate();
-	    	}
-	    	
-	    	//2.583 = wheel revs to go 58 inches
-	    	rightMaster.set(-RobotMap.COUNTS_PER_REV_DRIVE *2.583);
-    		leftMaster.set(RobotMap.COUNTS_PER_REV_DRIVE *2.583);
-    		
-	    	if(rightMaster.getPosition() < RobotMap.COUNTS_PER_REV_DRIVE*2.583+50){
-		    		rightMaster.setPosition(0);
-		    		leftMaster.setPosition(0);
-		    		rightMaster.set(0);
-		    		leftMaster.set(0);
-		    		state = State.CROSSING_LOW_AQUIRE;
-		    }
-	    	if(rightMaster.getOutputCurrent()  > 50){
-        		
-        	}
-	    	
-    	}else if(state == State.APPROACH_CHEVAL){
+    	    }
+	        break;
+    	  }
+    	  
+    	  case CROSSING_LOW_AQUIRE: {
+    	    		if(shooter.checkLimitStatusForward() && aquire.checkLimitStatusForward()){
+
+    	    			//2.489 = wheel revs per 52
+    	    			rightMaster.set(-RobotMap.COUNTS_PER_REV_DRIVE*RobotMap.WHEEL_REVS_ACROSS_DEFENSE);
+    	    			leftMaster.set(RobotMap.COUNTS_PER_REV_DRIVE*RobotMap.WHEEL_REVS_ACROSS_DEFENSE);
+    	    		}else{
+    		    		aquire.calibrate();
+    		    		shooter.calibrate();
+    	    		}
+    		  break;
+    	  }
+
+    	  /************************ low bar *************************/    	
+  
+    	  
+    	  /************************ cheval de frise *************************/     	  
+    	case APPROACH_CHEVAL: {
 	    	if(!shooter.calibrated()){
 	    		shooter.calibrateUp();
 	    		System.out.println("RUNNING THIS");
@@ -253,9 +244,9 @@ public class Robot extends IterativeRobot {
 	    	}else{
 	        	aquire.overCheval();
 	    	}
-	    	rightMaster.set(-RobotMap.COUNTS_PER_REV_DRIVE*2.583+600);
-    		leftMaster.set(RobotMap.COUNTS_PER_REV_DRIVE*2.583-600);
-	    		if(rightMaster.getPosition() <-RobotMap.COUNTS_PER_REV_DRIVE*2.583+1200){
+	    	rightMaster.set(-RobotMap.COUNTS_PER_REV_DRIVE*RobotMap.WHEEL_REVS_TO_DEFENSE+600);
+    		leftMaster.set(RobotMap.COUNTS_PER_REV_DRIVE*RobotMap.WHEEL_REVS_TO_DEFENSE-600);
+	    		if(rightMaster.getPosition() <-RobotMap.COUNTS_PER_REV_DRIVE*RobotMap.WHEEL_REVS_TO_DEFENSE+1200){
 		    		rightMaster.setPosition(0);
 		    		leftMaster.setPosition(0);
 		    		rightMaster.set(0);
@@ -263,36 +254,46 @@ public class Robot extends IterativeRobot {
 		    		state = State.CROSS_CHEVAL;
 		    		
 		    	}
-    	}else if(state == State.CROSS_CHEVAL){
+	    		break;
+    	}
+    	case CROSS_CHEVAL: {
     		
-    		if(!aquire.getHere()&&!done){
-    			aquire.fightdaPOWA();
+    		if(!aquire.getHere()){
+    			aquire.fightdaPOWA();  // raise over 5900
     			shooter.fightdaPOWA();
     		}else{
-    			done = true;
+    			state = State.CHEVAL_ARMS_READY;   // CHEVAL_ARMS_READY
     		}
-    		
-    		if(!done2){
-	    		if(done){
-	    			rightMaster.set(-RobotMap.COUNTS_PER_REV_DRIVE*0.527-900);
-	    			leftMaster.set(RobotMap.COUNTS_PER_REV_DRIVE*0.527+900);
-	    		}
-	    		if(rightMaster.getPosition()<-RobotMap.COUNTS_PER_REV_DRIVE*0.527-600){
-	    			done2 = true;
-	    			aquire.overCheval();
-	    			rightMaster.setPosition(0);
-		    		leftMaster.setPosition(0);
-		    		rightMaster.set(0);
-		    		leftMaster.set(0);
-	    		}
-    		}else if(!done3){
+    		break;
+    	}
+    	
+    	case CHEVAL_ARMS_READY: {
+
+			rightMaster.set(-RobotMap.COUNTS_PER_REV_DRIVE*0.527-900);
+			leftMaster.set(RobotMap.COUNTS_PER_REV_DRIVE*0.527+900);
+			
+    		if(rightMaster.getPosition()<-RobotMap.COUNTS_PER_REV_DRIVE*0.527-600){
+    			state = State.CHEVAL_MOVE_FWD;
+    			aquire.overCheval(); // to reverse switch or 1700
+    			rightMaster.setPosition(0);
+	    		leftMaster.setPosition(0);
+	    		rightMaster.set(0);
+	    		leftMaster.set(0);
+    		}			
+			break;
+    	}
+    	
+    	case CHEVAL_MOVE_FWD: {
     			aquire.overCheval();
 
     			rightMaster.set(-RobotMap.COUNTS_PER_REV_DRIVE*0.527-1300);
     			leftMaster.set(RobotMap.COUNTS_PER_REV_DRIVE*0.527+1300);
+    			break;
     		}
     	
-    	}else if(state == State.APPROACH_GENERAL){
+       /*************************** end cheval de frise *******************/
+    	
+    	case APPROACH_GENERAL: {
 	    	if(!shooter.calibrated()){
 	    		shooter.calibrateUp();
 	    		System.out.println("RUNNING THIS");
@@ -305,49 +306,44 @@ public class Robot extends IterativeRobot {
 	    	}else{
 	        		aquire.overWall();
 	    	}
-	    	rightMaster.set(-RobotMap.COUNTS_PER_REV_DRIVE*2.583-200);
-    		leftMaster.set(RobotMap.COUNTS_PER_REV_DRIVE*2.583);
-	    		if(rightMaster.getPosition() <(-RobotMap.COUNTS_PER_REV_DRIVE*2.583-200)+50){
+	    	rightMaster.set(-RobotMap.COUNTS_PER_REV_DRIVE*RobotMap.WHEEL_REVS_TO_DEFENSE-200);
+    		leftMaster.set(RobotMap.COUNTS_PER_REV_DRIVE*RobotMap.WHEEL_REVS_TO_DEFENSE);
+	    		if(rightMaster.getPosition() <(-RobotMap.COUNTS_PER_REV_DRIVE*RobotMap.WHEEL_REVS_TO_DEFENSE-200)+50){
 		    		rightMaster.setPosition(0);
 		    		leftMaster.setPosition(0);
 		    		rightMaster.set(0);
 		    		leftMaster.set(0);
 		    		state = State.CROSS_GENERAL;
 		    	}
-    	}else if(state == State.CROSS_GENERAL){
+	    	break;
+    	}
+    	
+    	case CROSS_GENERAL: {
     	
     		shooter.fightdaPOWA();
     		aquire.overWall();
     		
-    		if(rightMaster.getPosition() <((-RobotMap.COUNTS_PER_REV_DRIVE*2.583/2))+50){
+    		if(rightMaster.getPosition() <((-RobotMap.COUNTS_PER_REV_DRIVE*RobotMap.WHEEL_REVS_TO_DEFENSE/2))+50){
 	    		rightMaster.setPosition(0);
 	    		leftMaster.setPosition(0);
 	    		rightMaster.set(0);
 	    		leftMaster.set(0);
     		}else{
-    			rightMaster.set((RobotMap.COUNTS_PER_REV_DRIVE*2.583)/2);
-    			leftMaster.set((RobotMap.COUNTS_PER_REV_DRIVE*2.583)/2);
+    			rightMaster.set((RobotMap.COUNTS_PER_REV_DRIVE*RobotMap.WHEEL_REVS_TO_DEFENSE)/2);
+    			leftMaster.set((RobotMap.COUNTS_PER_REV_DRIVE*RobotMap.WHEEL_REVS_TO_DEFENSE)/2);
     		}
   
     	}
-    	else if(state == State.CROSSING_LOW_AQUIRE){
-    		if(shooter.checkLimitStatusForward() && aquire.checkLimitStatusForward()){
-
-    			//2.489 = wheel revs per 52
-    			rightMaster.set(-RobotMap.COUNTS_PER_REV_DRIVE*2.489);
-    			leftMaster.set(RobotMap.COUNTS_PER_REV_DRIVE*2.489);
-    		}else{
-	    		aquire.calibrate();
-	    		shooter.calibrate();
-    		}
     		
-    	}else if(state == State.NOTHING){
+    	case NOTHING: {
     		rightMaster.setPosition(0);
     		leftMaster.setPosition(0);
     		rightMaster.set(0);
     		leftMaster.set(0);
     		aquire.calibrate();
     		shooter.calibrate();
+    		break;
+    	}
     	}
     }
 
@@ -358,15 +354,14 @@ public class Robot extends IterativeRobot {
      */
 	public void teleopPeriodic() {
 
-    	if(!once){
+    	if(state != State.TELEOP){
 	      rightSlave.changeControlMode(TalonControlMode.Follower);
 	      rightSlave.set(rightMaster.getDeviceID());
 	      leftSlave.changeControlMode(TalonControlMode.Follower);
           leftSlave.set(leftMaster.getDeviceID());
-          once = true;
+          state = State.TELEOP;
     	}
-    	done = false;
-    	rSpeed = -joy.getMagnitude();
+     	rSpeed = -joy.getMagnitude();
     	lSpeed = -joy.getMagnitude();
     	
 		
