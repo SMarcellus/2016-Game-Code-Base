@@ -4,6 +4,7 @@ public class RobotMap
 {
 	// I'm adding a line to branch1
 	// another line to branch1 to conflict with branch 2
+	// after merge on github the local no longer matches on branch1
 
 	final static int RIGHT_MOTOR_SLV_PORT = 7;
 	final static int RIGHT_MOTOR_MSTR_PORT = 8;
